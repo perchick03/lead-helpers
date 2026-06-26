@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MXSWEEP — lead deliverability console</title>
+<meta name="description" content="Clean a lead CSV of dead domains and secure email gateways. MX checks run in your browser; nothing is uploaded.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A0E17'/%3E%3Cpath d='M7 22V10l9 7 9-7v12' fill='none' stroke='%238B93F8' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0A0E17; --bg2:#0B1019;
+  --panel:#111726; --raised:#161D2E; --raised2:#1C2336;
+  --border:#222B3D; --line:#2A3447;
+  --text:#E9EDF7; --muted:#929BB0; --faint:#5C6479;
+  --accent:#8B93F8; --accent-bright:#AeB2FF; --accent-dim:#2C3157;
+  --clean:#3DDC97; --google:#34D7A0; --ms:#6AA8FF; --other:#93a0bd;
+  --gateway:#F5B544; --dead:#FB6F84; --violet:#B59CFF;
+  --shadow:0 1px 0 rgba(255,255,255,.03), 0 18px 40px -24px rgba(0,0,0,.8);
+  --r:14px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:
+    radial-gradient(1100px 600px at 85% -10%, rgba(139,147,248,.10), transparent 60%),
+    radial-gradient(900px 500px at -5% 0%, rgba(61,220,151,.06), transparent 55%),
+    var(--bg);
+  color:var(--text); font-family:"Space Grotesk",system-ui,sans-serif;
+  font-feature-settings:"ss01";
+  line-height:1.5; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+.wrap{max-width:1000px; margin:0 auto; padding:28px 22px 80px}
+a{color:var(--accent-bright)}
+
+/* header */
+.top{display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:48px}
+.brand{display:flex; align-items:center; gap:11px; font-weight:600; letter-spacing:.04em}
+.glyph{width:30px; height:30px; border-radius:8px; background:linear-gradient(145deg,#1a2138,#11162400);
+  border:1px solid var(--line); display:grid; place-items:center}
+.glyph svg{width:18px; height:18px}
+.brand b{font-size:15px; letter-spacing:.18em}
+.brand span{color:var(--faint); font-size:11px; letter-spacing:.16em; text-transform:uppercase; margin-left:2px}
+.doh{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--muted)}
+.doh .dot{width:7px; height:7px; border-radius:50%; background:var(--clean); box-shadow:0 0 0 0 rgba(61,220,151,.5); animation:beat 2.4s infinite}
+@keyframes beat{0%,100%{box-shadow:0 0 0 0 rgba(61,220,151,.45)} 50%{box-shadow:0 0 0 5px rgba(61,220,151,0)}}
+
+/* hero */
+.hero{margin-bottom:30px; max-width:760px}
+.eyebrow{font-family:"JetBrains Mono",monospace; font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 14px}
+h1{font-size:clamp(30px,5.4vw,50px); line-height:1.04; font-weight:600; letter-spacing:-.02em; margin:0 0 16px}
+h1 em{font-style:normal; color:var(--faint)}
+.lead{font-size:17px; color:var(--muted); max-width:600px; margin:0}
+.lead b{color:var(--text); font-weight:500}
+
+/* cards */
+.card{background:linear-gradient(180deg,var(--panel),var(--bg2)); border:1px solid var(--border);
+  border-radius:var(--r); box-shadow:var(--shadow); padding:22px; margin-top:18px}
+.card.pad0{padding:0; overflow:hidden}
+.card-h{display:flex; align-items:center; gap:10px; margin:0 0 16px; font-size:12px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--faint); font-family:"JetBrains Mono",monospace}
+.card-h .idx{color:var(--accent); opacity:.8}
+.hidden{display:none !important}
+
+/* dropzone */
+.drop{position:relative; border:1.5px dashed var(--line); border-radius:var(--r); padding:40px 24px;
+  text-align:center; cursor:pointer; transition:border-color .18s, background .18s, transform .18s}
+.drop:hover,.drop:focus-visible{border-color:var(--accent); background:rgba(139,147,248,.05); outline:none}
+.drop.drag{border-color:var(--accent); background:rgba(139,147,248,.10); transform:scale(1.005)}
+.drop .ico{width:46px; height:46px; margin:0 auto 14px; border-radius:12px; display:grid; place-items:center;
+  background:var(--raised); border:1px solid var(--line); color:var(--accent)}
+.drop .ico svg{width:22px;height:22px}
+.drop h3{margin:0 0 6px; font-size:18px; font-weight:500}
+.drop p{margin:0; color:var(--faint); font-size:13.5px}
+.drop input{position:absolute; inset:0; opacity:0; cursor:pointer}
+
+/* file meta */
+.fmeta{display:flex; flex-wrap:wrap; align-items:center; gap:10px 20px; margin-top:16px; font-size:13.5px}
+.fmeta .file{display:flex; align-items:center; gap:9px; font-weight:500}
+.fmeta .file svg{width:16px;height:16px;color:var(--clean)}
+.chip{font-family:"JetBrains Mono",monospace; font-size:12px; color:var(--muted);
+  background:var(--raised); border:1px solid var(--border); border-radius:7px; padding:3px 9px}
+.chip b{color:var(--text); font-weight:600}
+.err{margin-top:14px; padding:13px 15px; border-radius:10px; font-size:13.5px;
+  background:rgba(251,111,132,.10); border:1px solid rgba(251,111,132,.35); color:#ffd5dc}
+.err code{font-family:"JetBrains Mono",monospace; color:#fff}
+
+/* options */
+.opts{display:flex; flex-wrap:wrap; gap:12px}
+.opt{position:relative; flex:1 1 200px; display:flex; align-items:flex-start; gap:12px; padding:15px;
+  border:1px solid var(--border); border-radius:11px; background:var(--raised); cursor:pointer; transition:border-color .15s, background .15s}
+.opt:hover{border-color:var(--line)}
+.opt.locked{cursor:default; background:linear-gradient(180deg,rgba(61,220,151,.07),transparent); border-color:rgba(61,220,151,.28)}
+.opt .txt{flex:1}
+.opt .txt strong{display:block; font-weight:500; font-size:14.5px; margin-bottom:2px; padding-right:20px}
+.opt .txt small{color:var(--faint); font-size:12.5px; line-height:1.4; display:block}
+/* switch */
+.sw{appearance:none; -webkit-appearance:none; flex:0 0 auto; width:38px; height:22px; border-radius:99px;
+  background:var(--line); position:relative; cursor:pointer; transition:background .18s; margin-top:1px}
+.sw::after{content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%;
+  background:#fff; transition:transform .18s}
+.sw:checked{background:var(--accent)}
+.sw:checked::after{transform:translateX(16px)}
+.sw:focus-visible{outline:2px solid var(--accent-bright); outline-offset:2px}
+.always{flex:0 0 auto; margin-top:1px; font-family:"JetBrains Mono",monospace; font-size:10px; letter-spacing:.1em;
+  color:var(--clean); border:1px solid rgba(61,220,151,.4); border-radius:6px; padding:3px 7px; text-transform:uppercase}
+/* info "?" + tooltip */
+.info{position:absolute; top:11px; right:11px; width:19px; height:19px; border-radius:50%; border:1px solid var(--line);
+  background:var(--raised2); color:var(--muted); font:600 11px "JetBrains Mono",monospace; display:grid; place-items:center;
+  cursor:help; padding:0; transition:color .15s, border-color .15s}
+.info:hover,.info:focus-visible{color:var(--text); border-color:var(--accent); outline:none}
+.tip{position:absolute; bottom:calc(100% + 9px); right:-7px; width:244px; background:#0C111B; border:1px solid var(--line);
+  border-radius:11px; padding:11px 13px; font:13px/1.46 "Space Grotesk",sans-serif; color:var(--muted); text-transform:none;
+  letter-spacing:normal; box-shadow:var(--shadow); opacity:0; visibility:hidden; transform:translateY(4px);
+  transition:opacity .15s, transform .15s, visibility .15s; z-index:6}
+.tip b{color:var(--text); font-weight:500}
+.tip .warn{display:block; margin-top:7px; padding-top:7px; border-top:1px solid var(--border); color:var(--gateway); font-size:12px}
+.info:hover + .tip, .info:focus + .tip, .tip:hover{opacity:1; visibility:visible; transform:none}
+
+.actions{display:flex; align-items:center; gap:14px; margin-top:18px; flex-wrap:wrap}
+.btn{font-family:inherit; font-size:15px; font-weight:500; border:none; border-radius:11px; padding:13px 24px;
+  cursor:pointer; display:inline-flex; align-items:center; gap:9px; transition:transform .12s, box-shadow .18s, opacity .18s}
+.btn svg{width:17px;height:17px}
+.btn-primary{background:linear-gradient(180deg,var(--accent-bright),var(--accent)); color:#0c0f1a;
+  box-shadow:0 10px 30px -12px var(--accent)}
+.btn-primary:hover{transform:translateY(-1px)}
+.btn-primary:active{transform:translateY(0)}
+.btn-primary:disabled{opacity:.5; cursor:not-allowed; transform:none; box-shadow:none}
+.btn-ghost{background:var(--raised); color:var(--text); border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--line)}
+.btn:focus-visible{outline:2px solid var(--accent-bright); outline-offset:2px}
+
+/* console / progress */
+.bar{height:8px; border-radius:99px; background:var(--raised); overflow:hidden; margin:4px 0 18px}
+.bar > i{display:block; height:100%; width:0; border-radius:99px;
+  background:linear-gradient(90deg,var(--accent),var(--clean)); transition:width .3s ease}
+.prog-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px; font-size:13px; color:var(--muted)}
+.prog-top .pct{font-family:"JetBrains Mono",monospace; font-size:26px; color:var(--text); font-weight:600}
+.tallies{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:18px}
+.tally{font-family:"JetBrains Mono",monospace; font-size:12px; display:flex; align-items:center; gap:7px;
+  background:var(--raised); border:1px solid var(--border); border-radius:8px; padding:5px 10px}
+.tally .d{width:8px;height:8px;border-radius:2px}
+.tally b{color:var(--text); font-weight:600; font-variant-numeric:tabular-nums}
+.stream{font-family:"JetBrains Mono",monospace; font-size:13px; background:var(--bg2); border:1px solid var(--border);
+  border-radius:11px; padding:8px; min-height:124px; max-height:230px; overflow:hidden}
+.row-line{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 10px; border-radius:7px;
+  animation:slide .28s ease}
+.row-line + .row-line{margin-top:1px}
+@keyframes slide{from{opacity:0; transform:translateY(-5px)} to{opacity:1; transform:none}}
+.row-line .dom{color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* badges */
+.badge{font-family:"JetBrains Mono",monospace; font-size:11px; font-weight:500; padding:3px 9px; border-radius:99px;
+  white-space:nowrap; display:inline-flex; align-items:center; gap:5px; letter-spacing:.02em}
+.badge::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+.b-google{color:var(--google); background:rgba(52,215,160,.12)}
+.b-microsoft{color:var(--ms); background:rgba(106,168,255,.12)}
+.b-other{color:var(--other); background:rgba(147,160,189,.14)}
+.b-gateway{color:var(--gateway); background:rgba(245,181,68,.13)}
+.b-no-mx,.b-dead{color:var(--dead); background:rgba(251,111,132,.13)}
+.b-bad-email-format,.b-disposable{color:var(--violet); background:rgba(181,156,255,.13)}
+
+/* KPIs */
+.kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:14px}
+.kpi{background:var(--raised); border:1px solid var(--border); border-radius:12px; padding:17px 18px; position:relative; overflow:hidden}
+.kpi::before{content:""; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent)}
+.kpi.k-clean::before{background:var(--clean)} .kpi.k-parked::before{background:var(--dead)}
+.kpi.k-gate::before{background:var(--gateway)}
+.kpi .n{font-family:"JetBrains Mono",monospace; font-size:30px; font-weight:600; letter-spacing:-.01em; font-variant-numeric:tabular-nums}
+.kpi.k-clean .n{color:var(--clean)} .kpi.k-parked .n{color:var(--dead)} .kpi.k-gate .n{color:var(--gateway)}
+.kpi .l{font-size:12px; color:var(--faint); margin-top:3px; letter-spacing:.04em}
+.kpi .l b{color:var(--muted); font-weight:500}
+
+/* breakdown */
+.split{height:12px; border-radius:99px; overflow:hidden; display:flex; background:var(--raised); margin:4px 0 14px}
+.split > span{height:100%; transition:width .6s cubic-bezier(.2,.7,.2,1)}
+.legend{display:flex; flex-wrap:wrap; gap:8px 18px; font-size:12.5px; color:var(--muted)}
+.legend .it{display:flex; align-items:center; gap:7px}
+.legend .d{width:9px;height:9px;border-radius:3px}
+.legend b{color:var(--text); font-variant-numeric:tabular-nums}
+.note{margin:14px 0 0; font-size:12.5px; color:var(--faint); border-top:1px solid var(--border); padding-top:12px}
+
+/* table */
+.tbl-wrap{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:13.5px}
+thead th{text-align:left; font-family:"JetBrains Mono",monospace; font-weight:500; font-size:11px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--faint); padding:11px 16px; border-bottom:1px solid var(--border); white-space:nowrap}
+tbody td{padding:11px 16px; border-bottom:1px solid rgba(34,43,61,.55); white-space:nowrap; max-width:230px;
+  overflow:hidden; text-overflow:ellipsis}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.parked{background:rgba(251,111,132,.035)}
+tbody td.email{color:var(--text); font-family:"JetBrains Mono",monospace; font-size:12.5px}
+.tbl-foot{padding:12px 16px; font-size:12.5px; color:var(--faint); border-top:1px solid var(--border)}
+
+/* download */
+.dl{display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap}
+.dl-toggle{display:flex; align-items:center; gap:11px; font-size:14px; color:var(--muted); cursor:pointer}
+.dl-toggle small{display:block; color:var(--faint); font-size:12px}
+
+footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); color:var(--faint); font-size:12.5px;
+  display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap}
+
+@media (max-width:640px){
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .top{margin-bottom:32px}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms !important; transition-duration:.001ms !important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <span class="glyph"><svg viewBox="0 0 32 32" fill="none"><path d="M7 22V10l9 7 9-7v12" stroke="#8B93F8" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/></svg></span>
+      <b>MXSWEEP</b><span>console</span>
+    </div>
+    <div class="doh"><span class="dot"></span> resolving via DoH · Google + Cloudflare</div>
+  </header>
+
+  <section class="hero">
+    <p class="eyebrow">deliverability · pre-flight</p>
+    <h1>Strip the dead domains and gateways <em>before you hit send.</em></h1>
+    <p class="lead">Drop a lead CSV. Every recipient domain gets an <b>MX lookup</b> in your browser — no upload, no API key — and anything sitting behind a secure email gateway (Mimecast, Proofpoint, Barracuda…) or with no live mailserver gets flagged.</p>
+  </section>
+
+  <!-- 1 · upload -->
+  <section class="card" id="upCard">
+    <div class="card-h"><span class="idx">01</span> source list</div>
+    <label class="drop" id="drop" tabindex="0" role="button" aria-label="Upload a CSV file">
+      <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5"/><path d="M12 4v12"/></svg></div>
+      <h3>Drop your CSV here</h3>
+      <p>or click to browse — needs an <span class="mono">email</span> / <span class="mono">Email</span> column</p>
+      <input type="file" id="file" accept=".csv,text/csv">
+    </label>
+    <div id="fmeta" class="fmeta hidden"></div>
+    <div id="ferr" class="err hidden"></div>
+  </section>
+
+  <!-- 2 · options -->
+  <section class="card hidden" id="optCard">
+    <div class="card-h"><span class="idx">02</span> checks</div>
+    <div class="opts">
+      <div class="opt locked">
+        <span class="always">on</span>
+        <div class="txt"><strong>MX & gateway check</strong><small>Park no-MX / null-MX domains and secure email gateways. Tag survivors google · microsoft · other.</small></div>
+        <button class="info" type="button" aria-label="About the MX check" onclick="event.stopPropagation()">?</button>
+        <span class="tip">Looks up each domain's mail servers (MX) over DNS. Domains with no live MX, or sitting behind a known secure gateway (<b>Mimecast, Proofpoint, Barracuda</b>…), get parked; the rest are tagged by provider.<span class="warn">A transient DNS hiccup can occasionally mislabel a live domain — re-run if a batch looks off.</span></span>
+      </div>
+      <label class="opt">
+        <input type="checkbox" class="sw" id="optFormat">
+        <div class="txt"><strong>Bad email format</strong><small>Park addresses that fail a basic syntax check.</small></div>
+        <button class="info" type="button" aria-label="About the format check" onclick="event.stopPropagation()">?</button>
+        <span class="tip">Parks addresses that fail a basic syntax check — missing <b>@</b>, no domain, no TLD. It's a simple pattern, so a rare unusual-but-valid address could be parked.<span class="warn">Heuristic — can make mistakes. Parked rows are downloadable, not deleted.</span></span>
+      </label>
+      <label class="opt">
+        <input type="checkbox" class="sw" id="optDomain">
+        <div class="txt"><strong>Disposable + domain mismatch</strong><small>Park throwaway inboxes; flag emails whose domain ≠ company domain.</small></div>
+        <button class="info" type="button" aria-label="About the disposable and mismatch check" onclick="event.stopPropagation()">?</button>
+        <span class="tip">Parks known throwaway inboxes (mailinator, etc.) and <b>flags</b> rows where the email domain doesn't match the company domain. The mismatch is a non-blocking flag — kept, not removed — and uses fuzzy matching.<span class="warn">Heuristic — can make mistakes. Treat mismatch flags as hints, not verdicts.</span></span>
+      </label>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" id="run">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+        Run deliverability check
+      </button>
+      <span class="mono" style="color:var(--faint);font-size:12.5px" id="runHint"></span>
+    </div>
+  </section>
+
+  <!-- 3 · console -->
+  <section class="card hidden" id="runCard">
+    <div class="card-h"><span class="idx">03</span> resolving</div>
+    <div class="prog-top"><span id="progLabel">Resolving MX records…</span><span class="pct" id="pct">0%</span></div>
+    <div class="bar"><i id="barFill"></i></div>
+    <div class="tallies" id="tallies"></div>
+    <div class="stream mono" id="stream"></div>
+  </section>
+
+  <!-- 4 · results -->
+  <section id="results" class="hidden">
+    <div class="card">
+      <div class="card-h"><span class="idx">04</span> verdict</div>
+      <div class="kpis" id="kpis"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">breakdown</div>
+      <div class="split" id="split"></div>
+      <div class="legend" id="legend"></div>
+      <p class="note" id="checkNote"></p>
+    </div>
+
+    <div class="card pad0">
+      <div style="padding:18px 22px 0"><div class="card-h" style="margin:0">top leads</div></div>
+      <div class="tbl-wrap"><table id="tbl"><thead></thead><tbody></tbody></table></div>
+      <div class="tbl-foot" id="tblFoot"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-h">export</div>
+      <div class="dl">
+        <label class="dl-toggle">
+          <input type="checkbox" class="sw" id="markBad">
+          <span>Include bad leads<small>full list + park_reason & mx columns, for debugging</small></span>
+        </label>
+        <button class="btn btn-primary" id="download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>
+          <span id="dlLabel">Download clean list</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Runs entirely in your browser · leads never leave this tab</span>
+    <span class="mono">MX via DNS-over-HTTPS</span>
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script>
+"use strict";
+/* ── classification logic, ported 1:1 from deliverability.py ─────────────── */
+const GATEWAY = ["mimecast","pphosted","ppe-hosted","proofpoint","barracuda","iphmx",
+  "ironport","cisco","messagelabs","symanteccloud","fortimail","securence","mxthunder"];
+const DISPOSABLE = new Set(["mailinator.com","guerrillamail.com","10minutemail.com","tempmail.com",
+  "trashmail.com","yopmail.com","getnada.com","throwawaymail.com","sharklasers.com"]);
+const FREE = new Set(["gmail.com","yahoo.com","hotmail.com","outlook.com","icloud.com","aol.com",
+  "live.com","msn.com","me.com","mac.com","protonmail.com","proton.me","yandex.com","mail.com","gmx.com","gmx.net"]);
+const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+const isBadFormat = e => !!e && !EMAIL_RE.test(e);
+
+function classify(status, answer){
+  // answer hosts: keep trailing dot so null-MX ('.') is detectable
+  const mx = (answer||[]).filter(a=>a.type===15).map(a=>a.data.trim().split(/\s+/).pop().toLowerCase());
+  if(status!==0 || mx.length===0) return "no-mx";
+  if(mx.every(h=>h===".")) return "no-mx";               // RFC 7505 null MX
+  const j = mx.join(" ");
+  if(GATEWAY.some(g=>j.includes(g))) return "gateway";
+  if(j.includes("protection.outlook")||j.includes("outlook.com")) return "microsoft";
+  if(j.includes("aspmx.l.google")||j.includes("googlemail")||j.includes("google.com")) return "google";
+  return "other";
+}
+const norm = d => { d=d.trim().toLowerCase(); return d.startsWith("www.")?d.slice(4):d; };
+const stem = d => { const r = d.includes(".")?d.slice(0,d.lastIndexOf(".")):d; return r.toLowerCase().replace(/[^a-z0-9]/g,""); };
+function lev(a,b){ if(a.length<b.length)[a,b]=[b,a]; if(!b.length)return a.length;
+  let prev=Array.from({length:b.length+1},(_,i)=>i);
+  for(let i=0;i<a.length;i++){ const cur=[i+1];
+    for(let j=0;j<b.length;j++) cur.push(Math.min(cur[j]+1, prev[j+1]+1, prev[j]+(a[i]!==b[j]?1:0)));
+    prev=cur; } return prev[prev.length-1]; }
+function domainMatches(ed, cd){
+  const e=norm(ed), c=norm(cd); if(!e||!c) return false;
+  if(e===c || e.endsWith("."+c) || c.endsWith("."+e)) return true;
+  const es=stem(e), cs=stem(c); if(es===cs) return true;
+  const [sh,lo] = es.length<=cs.length?[es,cs]:[cs,es];
+  if(sh.length>=4 && lo.includes(sh)) return true;
+  if(es.length>=7 && cs.length>=7 && lev(es,cs)<=2) return true;
+  return false;
+}
+
+/* ── DoH resolver: 2 Google attempts then Cloudflare (mirrors dig's retry) ── */
+async function resolveMX(domain){
+  const tries = [
+    {u:`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, h:{}},
+    {u:`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, h:{}},
+    {u:`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`, h:{accept:"application/dns-json"}},
+  ];
+  for(const t of tries){
+    try{
+      const r = await fetch(t.u, {headers:t.h});
+      if(!r.ok) continue;
+      const d = await r.json();
+      return classify(d.Status, d.Answer);
+    }catch(_){ /* next provider */ }
+  }
+  return "no-mx";   // persistent failure → same verdict the CLI gives on a dead lookup
+}
+async function mapPool(items, n, fn, onEach){
+  const out = new Array(items.length); let i = 0;
+  const worker = async () => { while(i < items.length){ const k = i++; out[k] = await fn(items[k]); onEach(items[k], out[k]); } };
+  await Promise.all(Array.from({length:Math.min(n, items.length)}, worker));
+  return out;
+}
+
+/* ── state + helpers ─────────────────────────────────────────────────────── */
+const $ = s => document.querySelector(s);
+const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
+let ROWS=[], FIELDS=[], EMAIL_COL="", STEM="leads";
+const VERDICTS = {google:["Google Workspace","b-google"], microsoft:["Microsoft 365","b-microsoft"],
+  other:["Other MX","b-other"], gateway:["Gateway","b-gateway"], "no-mx":["No MX","b-no-mx"],
+  "bad-email-format":["Bad format","b-bad-email-format"], disposable:["Disposable","b-disposable"], "":["—","b-other"]};
+const findCol = (...names) => { const w = new Set(names.map(s=>s.toLowerCase()));
+  return FIELDS.find(f => w.has(f.trim().toLowerCase())) || ""; };
+
+/* ── 1 · file load ───────────────────────────────────────────────────────── */
+const drop = $("#drop");
+$("#file").addEventListener("change", e => e.target.files[0] && loadFile(e.target.files[0]));
+["dragenter","dragover"].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.add("drag");}));
+["dragleave","drop"].forEach(ev => drop.addEventListener(ev, e=>{e.preventDefault(); drop.classList.remove("drag");}));
+drop.addEventListener("drop", e => e.dataTransfer.files[0] && loadFile(e.dataTransfer.files[0]));
+drop.addEventListener("keydown", e => { if(e.key==="Enter"||e.key===" "){e.preventDefault(); $("#file").click();} });
+
+function loadFile(file){
+  STEM = file.name.replace(/\.csv$/i,"") || "leads";
+  Papa.parse(file, {header:true, skipEmptyLines:"greedy", complete:res=>{
+    FIELDS = res.meta.fields || [];
+    ROWS = res.data;
+    EMAIL_COL = findCol("email");
+    const meta = $("#fmeta"), err = $("#ferr");
+    if(!EMAIL_COL){
+      meta.classList.add("hidden"); $("#optCard").classList.add("hidden");
+      $("#results").classList.add("hidden"); $("#runCard").classList.add("hidden");
+      err.classList.remove("hidden");
+      err.innerHTML = `No <code>email</code> column found. Columns in this file: ${FIELDS.map(f=>`<code>${esc(f)}</code>`).join(" ") || "<code>(none)</code>"}`;
+      return;
+    }
+    err.classList.add("hidden");
+    const domains = new Set(ROWS.map(r=>edom(r)).filter(Boolean));
+    meta.classList.remove("hidden");
+    meta.innerHTML = `
+      <span class="file"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>${esc(file.name)}</span>
+      <span class="chip"><b>${ROWS.length.toLocaleString()}</b> rows</span>
+      <span class="chip"><b>${domains.size.toLocaleString()}</b> unique domains</span>
+      <span class="chip">email column: <b>${esc(EMAIL_COL)}</b></span>`;
+    $("#optCard").classList.remove("hidden");
+    $("#results").classList.add("hidden"); $("#runCard").classList.add("hidden");
+    $("#runHint").textContent = `~${domains.size} DNS lookups`;
+    $("#optCard").scrollIntoView({behavior:reduce?"auto":"smooth", block:"nearest"});
+  }});
+}
+const edom = r => { const e=(r[EMAIL_COL]||"").trim().toLowerCase(); return e.includes("@")?e.split("@")[1]:""; };
+const esc = s => String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+/* ── 2 · run ─────────────────────────────────────────────────────────────── */
+$("#run").addEventListener("click", run);
+async function run(){
+  const doFormat = $("#optFormat").checked, doDomain = $("#optDomain").checked;
+  const domainCol = doDomain ? findCol("company_domain","company domain","domain") : "";
+  const btn = $("#run"); btn.disabled = true;
+  $("#runCard").classList.remove("hidden"); $("#results").classList.add("hidden");
+  $("#stream").innerHTML = ""; $("#barFill").style.width = "0%"; $("#pct").textContent = "0%";
+  $("#runCard").scrollIntoView({behavior:reduce?"auto":"smooth", block:"start"});
+
+  // unique recipient domains (skip malformed when the format check is on — matches the CLI)
+  const uniq = [...new Set(ROWS.map(r=>{
+    const e=(r[EMAIL_COL]||"").trim().toLowerCase();
+    return (e.includes("@") && !(doFormat && isBadFormat(e))) ? e.split("@")[1] : "";
+  }).filter(Boolean))];
+
+  const tally = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0};
+  renderTallies(tally, 0, uniq.length);
+  const verdict = {};
+  let done = 0;
+  await mapPool(uniq, 12, resolveMX, (dom, v)=>{
+    verdict[dom] = v; tally[v]++; done++;
+    const p = Math.round(done/uniq.length*100);
+    $("#barFill").style.width = p+"%"; $("#pct").textContent = p+"%";
+    $("#progLabel").textContent = done<uniq.length ? `Resolving ${done.toLocaleString()} / ${uniq.length.toLocaleString()} domains` : "Resolution complete";
+    renderTallies(tally, done, uniq.length);
+    pushStream(dom, v);
+  });
+
+  // annotate every row (mirrors check_rows)
+  for(const r of ROWS){
+    const email=(r[EMAIL_COL]||"").trim().toLowerCase();
+    const cdom = domainCol ? (r[domainCol]||"").trim().toLowerCase() : "";
+    const ed = email.includes("@")?email.split("@")[1]:"";
+    let park="", mx="", mismatch="";
+    if(doFormat && isBadFormat(email)) park="bad-email-format";
+    else{
+      const v = verdict[ed] || "";
+      if(v==="no-mx"||v==="gateway") park=v; else mx=v;
+      if(doDomain){
+        if(DISPOSABLE.has(ed)) park = park || "disposable";
+        if(email && cdom && ed && !FREE.has(ed) && !DISPOSABLE.has(ed) && !domainMatches(ed,cdom)) mismatch="yes";
+      }
+    }
+    r.park_reason=park; r.mx=mx; r.domain_mismatch=mismatch;
+  }
+  // snap the live tallies (per-domain) to the final per-lead counts so they match the verdict cards
+  renderTallies(finalLeadTallies(), uniq.length, uniq.length);
+  btn.disabled = false;
+  renderResults(domainCol, doFormat, doDomain);
+}
+function finalLeadTallies(){
+  const t = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0};
+  for(const r of ROWS){
+    if(r.park_reason==="gateway") t.gateway++;
+    else if(r.park_reason==="no-mx") t["no-mx"]++;
+    else if(r.mx && r.mx in t) t[r.mx]++;
+  }
+  return t;
+}
+
+function renderTallies(t, done, total){
+  const items = [["google",t.google],["microsoft",t.microsoft],["other",t.other],["gateway",t.gateway],["no-mx",t["no-mx"]]];
+  $("#tallies").innerHTML = `<span class="tally"><span class="d" style="background:var(--accent)"></span>resolved <b>${done}</b>/${total}</span>` +
+    items.map(([k,n])=>`<span class="tally"><span class="d" style="background:${cssVar(k)}"></span>${VERDICTS[k][0]} <b>${n}</b></span>`).join("");
+}
+const cssVar = k => ({google:"var(--google)",microsoft:"var(--ms)",other:"var(--other)",gateway:"var(--gateway)","no-mx":"var(--dead)","bad-email-format":"var(--violet)",disposable:"var(--violet)"}[k]||"var(--other)");
+function pushStream(dom, v){
+  const s = $("#stream");
+  const line = document.createElement("div");
+  line.className = "row-line";
+  line.innerHTML = `<span class="dom">${esc(dom)}</span><span class="badge ${VERDICTS[v][1]}">${VERDICTS[v][0]}</span>`;
+  s.prepend(line);
+  while(s.children.length > 9) s.lastChild.remove();
+}
+
+/* ── 3 · results ─────────────────────────────────────────────────────────── */
+function renderResults(domainCol, doFormat, doDomain){
+  const total = ROWS.length;
+  const parked = ROWS.filter(r=>r.park_reason);
+  const clean = total - parked.length;
+  const by = {};
+  for(const r of parked) by[r.park_reason] = (by[r.park_reason]||0)+1;
+  const gateways = by.gateway||0;
+
+  $("#kpis").innerHTML = [
+    ["", "Leads in", total, "rows processed"],
+    ["k-clean", "Deliverable", clean, "ready to send"],
+    ["k-parked", "Parked", parked.length, "removed as bad"],
+    ["k-gate", "Gateways", gateways, "secure email gateways"],
+  ].map(([cls,l,n,sub])=>`<div class="kpi ${cls}"><div class="n" data-n="${n}">0</div><div class="l"><b>${l}</b> · ${sub}</div></div>`).join("");
+  document.querySelectorAll(".kpi .n").forEach(el=>countUp(el, +el.dataset.n));
+
+  // breakdown bar: clean + each park reason
+  const segs = [["clean", clean, "var(--clean)"], ...Object.entries(by).map(([k,n])=>[k, n, cssVar(k)])];
+  $("#split").innerHTML = segs.filter(([,n])=>n>0).map(([k,n,c])=>`<span style="width:${n/total*100}%;background:${c}" title="${k}: ${n}"></span>`).join("");
+  $("#legend").innerHTML = segs.map(([k,n,c])=>`<span class="it"><span class="d" style="background:${c}"></span>${k==="clean"?"deliverable":(VERDICTS[k]?VERDICTS[k][0]:k)} <b>${n.toLocaleString()}</b></span>`).join("");
+
+  // show what the optional checks did (so a clean list doesn't read as "nothing ran")
+  const ran = ["MX"];
+  if(doFormat) ran.push("format");
+  if(doDomain) ran.push(domainCol ? "disposable + domain" : "disposable");
+  const mismatch = doDomain ? ROWS.filter(r=>r.domain_mismatch).length : 0;
+  let note = `Checks run: ${ran.join(" · ")}.`;
+  if(doDomain && !domainCol) note += " No company-domain column found — mismatch flag skipped.";
+  else if(doDomain) note += ` Domain mismatch flagged (non-blocking, kept): ${mismatch.toLocaleString()}.`;
+  $("#checkNote").textContent = note;
+
+  // table: top 12 rows, status badge + a couple identity columns
+  const extra = [findCol("first_name","name","full_name"), findCol("company","company_name","organization"), domainCol].filter((v,i,a)=>v&&a.indexOf(v)===i).slice(0,2);
+  const head = ["Status", EMAIL_COL, ...extra, "MX"];
+  $("#tbl thead").innerHTML = "<tr>"+head.map(h=>`<th>${esc(h)}</th>`).join("")+"</tr>";
+  $("#tbl tbody").innerHTML = ROWS.slice(0,12).map(r=>{
+    const v = r.park_reason || r.mx || "";
+    const badge = `<span class="badge ${VERDICTS[v]?VERDICTS[v][1]:"b-other"}">${VERDICTS[v]?VERDICTS[v][0]:esc(v)}</span>`;
+    const cells = [badge, `<span class="email">${esc(r[EMAIL_COL]||"")}</span>`, ...extra.map(c=>esc(r[c]||"—")),
+      r.mx?`<span class="mono" style="color:var(--muted)">${esc(r.mx)}</span>`:"—"];
+    return `<tr class="${r.park_reason?"parked":""}">`+cells.map(c=>`<td class="${c===cells[1]?"email":""}">${c}</td>`).join("")+"</tr>";
+  }).join("");
+  $("#tblFoot").textContent = `Showing 12 of ${total.toLocaleString()} — download the full list below.`;
+
+  $("#results").classList.remove("hidden");
+  updateDlLabel();
+  $("#results").scrollIntoView({behavior:reduce?"auto":"smooth", block:"start"});
+}
+function countUp(el, to){
+  if(reduce || to===0){ el.textContent = to.toLocaleString(); return; }
+  const dur=650, t0=performance.now();
+  const step = t => { const p=Math.min((t-t0)/dur,1); el.textContent = Math.round((1-Math.pow(1-p,3))*to).toLocaleString();
+    if(p<1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+/* ── 4 · download ────────────────────────────────────────────────────────── */
+$("#markBad").addEventListener("change", updateDlLabel);
+function updateDlLabel(){ $("#dlLabel").textContent = $("#markBad").checked ? "Download full list + flags" : "Download clean list"; }
+$("#download").addEventListener("click", ()=>{
+  const full = $("#markBad").checked;
+  const extraCols = ["park_reason","mx","domain_mismatch"].filter(c=>!FIELDS.includes(c));
+  const cols = full ? [...FIELDS, ...extraCols] : FIELDS;            // clean list keeps the original columns only
+  const rows = (full ? ROWS : ROWS.filter(r=>!r.park_reason)).map(r=>{
+    const o={}; for(const c of cols) o[c] = r[c] ?? ""; return o;
+  });
+  const csv = Papa.unparse({fields:cols, data:rows});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"}));
+  a.download = `${STEM}_${full?"checked":"clean"}.csv`;
+  a.click(); URL.revokeObjectURL(a.href);
+});
+</script>
+</body>
+</html>
