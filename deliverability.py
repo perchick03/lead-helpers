@@ -30,7 +30,9 @@ USAGE
 OUTPUT
   Appends three columns to every row and writes <input>_checked.csv:
     park_reason     — "" if it passes, else: bad-email-format | no-mx | gateway | disposable
-    mx              — provider for survivors: microsoft | google | other ("" if parked/unchecked)
+    mx              — provider for survivors: microsoft | google | other | dns-error
+                      ("" if parked/unchecked). dns-error = the resolver never
+                      answered; the row is kept, not parked — re-run those.
     domain_mismatch — "yes" if the email domain doesn't match company_domain (non-blocking flag)
   With --split also writes <input>_clean.csv (park_reason == "") and <input>_parked.csv.
 """
@@ -42,6 +44,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -69,38 +72,51 @@ _GATEWAY = ("mimecast", "pphosted", "ppe-hosted", "proofpoint", "barracuda",
             "iphmx", "ironport", "cisco", "messagelabs", "symanteccloud",
             "fortimail", "securence", "mxthunder")
 _MX_TIMEOUT_S = 8
-_MX_WORKERS = 25
+_MX_WORKERS = 12
+_MX_ATTEMPTS = 3
 
 
-def _mx_record(domain: str) -> str:
-    """Lowercased MX records for a domain via `dig` ('' on any failure).
+def _mx_lookup(domain: str) -> tuple[str, list[str]]:
+    """One `dig` run → (rcode, mx_hosts). rcode '' means the LOOKUP failed.
 
-    Retries once on an empty reply: `dig +short` returns blank (exit 0) for BOTH
-    'no MX record exists' AND a transient DNS failure (timeout/SERVFAIL), so one
-    retry keeps a momentary hiccup from parking a live domain as dead.
+    `dig +short` was the old bug: it prints nothing (exit 0) for BOTH 'no MX
+    record' and a timeout/SERVFAIL, so a rate-limited resolver silently parked
+    live domains as dead. Asking for the header instead makes the difference
+    visible — NOERROR/NXDOMAIN are answers, everything else is a failure.
     """
-    for _ in range(2):
-        try:
-            out = subprocess.run(
-                ["dig", "+short", "MX", domain],
-                capture_output=True, text=True, timeout=_MX_TIMEOUT_S, check=False,
-            ).stdout.lower()
-        except (OSError, subprocess.SubprocessError):
-            out = ""
-        if out.strip():
-            return out
-    return ""
+    try:
+        out = subprocess.run(
+            ["dig", "+noall", "+comment", "+answer", "MX", domain],
+            capture_output=True, text=True, timeout=_MX_TIMEOUT_S, check=False,
+        ).stdout.lower()
+    except (OSError, subprocess.SubprocessError):
+        return "", []
+    m = re.search(r"status:\s*(\w+)", out)
+    if not m:
+        return "", []                       # no header → timed out / no resolver reached
+    hosts = [f[-1] for f in (ln.split() for ln in out.splitlines())
+             if len(f) >= 5 and f[3] == "mx"]
+    return m.group(1), hosts
 
 
 def classify_mx(domain: str) -> str:
-    """Map a domain to: no-mx | gateway | microsoft | google | other."""
-    mx_hosts = _mx_record(domain)
-    if not mx_hosts.strip():
+    """Map a domain to: no-mx | gateway | microsoft | google | other | dns-error.
+
+    dns-error is NOT a verdict — the resolver never answered. Those rows are
+    left unparked so a DNS hiccup can't kill a live lead; re-run to resolve.
+    """
+    for attempt in range(_MX_ATTEMPTS):
+        rcode, hosts = _mx_lookup(domain)
+        if rcode in ("noerror", "nxdomain"):
+            break
+        if attempt + 1 < _MX_ATTEMPTS:
+            time.sleep(0.4 * (attempt + 1))  # back off — the resolver is rate-limiting us
+    else:
+        return "dns-error"
+    # No MX at all (NXDOMAIN / NODATA), or null MX (RFC 7505: a single '.' host).
+    if not hosts or all(h == "." for h in hosts):
         return "no-mx"
-    # Null MX (RFC 7505): a single '.' host declares the domain accepts no mail.
-    hosts = [ln.split()[-1] for ln in mx_hosts.splitlines() if ln.strip()]
-    if hosts and all(h == "." for h in hosts):
-        return "no-mx"
+    mx_hosts = " ".join(hosts)
     if any(g in mx_hosts for g in _GATEWAY):
         return "gateway"
     if "protection.outlook" in mx_hosts or "outlook.com" in mx_hosts:
@@ -198,7 +214,9 @@ def check_rows(rows: list[dict], email_col: str, domain_col: str, workers: int,
         uniq = sorted({d for e, d in zip(emails, edoms)
                        if d and not (do_format and is_bad_format(e))})
         if uniq:
-            with ThreadPoolExecutor(max_workers=min(max(workers, _MX_WORKERS), len(uniq))) as ex:
+            # honour --workers as a CEILING: 25+ parallel digs is what got the
+            # resolver to rate-limit us in the first place.
+            with ThreadPoolExecutor(max_workers=max(1, min(workers, len(uniq)))) as ex:
                 verdict = dict(zip(uniq, ex.map(classify_mx, uniq)))
 
     for r, email, edom, cdom in zip(rows, emails, edoms, cdoms):
@@ -271,6 +289,10 @@ def main() -> None:
         print("\n=== mx provider (survivors) ===")
         for prov, n in Counter(r["mx"] for r in clean if r["mx"]).most_common():
             print(f"  {prov:18s} {n}")
+        n_err = sum(1 for r in rows if r["mx"] == "dns-error")
+        if n_err:
+            print(f"\n!! {n_err} domains never resolved (dns-error) — kept, NOT parked.")
+            print("   The resolver was failing, not the domain. Re-run to settle them.")
     n_mismatch = sum(1 for r in rows if r["domain_mismatch"])
     print(f"\ndomain_mismatch flagged (non-blocking): {n_mismatch}")
     print(f"\nTOTAL: {len(clean)} pass / {len(parked)} parked of {len(rows)}")

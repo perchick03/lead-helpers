@@ -1,5 +1,32 @@
-"""One runnable check for the toggle logic — no DNS (do_mx=False)."""
-from deliverability import check_rows
+"""Runnable checks: toggle logic (no DNS) + the DNS-failure-is-not-a-verdict rule."""
+import deliverability
+from deliverability import check_rows, classify_mx
+
+
+def test_dns_failure_is_not_no_mx():
+    """A failed lookup must never render as the verdict 'no-mx' (the 2026 bug)."""
+    calls = []
+
+    def fake(rcode, hosts):
+        deliverability._mx_lookup = lambda d: (calls.append(d), (rcode, hosts))[1]
+        deliverability.time.sleep = lambda s: None
+
+    fake("", [])                                  # timeout / no resolver reached
+    assert classify_mx("flowersfoods.com") == "dns-error"
+    assert len(calls) == deliverability._MX_ATTEMPTS  # retried, not one-shot
+    fake("servfail", [])
+    assert classify_mx("flowersfoods.com") == "dns-error"
+    fake("noerror", [])                           # NODATA — a real answer
+    assert classify_mx("example.com") == "no-mx"
+    fake("nxdomain", [])                          # domain doesn't exist
+    assert classify_mx("nope.invalid") == "no-mx"
+    fake("noerror", ["."])                        # RFC 7505 null MX
+    assert classify_mx("nomail.com") == "no-mx"
+    fake("noerror", ["flowersfoods-com.mail.protection.outlook.com."])
+    assert classify_mx("flowersfoods.com") == "microsoft"
+    fake("noerror", ["us-smtp-inbound-1.mimecast.com."])
+    assert classify_mx("x.com") == "gateway"
+    print("ok — dns failures stay dns-error")
 
 
 def test_toggles():
@@ -33,3 +60,4 @@ def test_toggles():
 
 if __name__ == "__main__":
     test_toggles()
+    test_dns_failure_is_not_no_mx()

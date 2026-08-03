@@ -161,6 +161,7 @@ h1 em{font-style:normal; color:var(--faint)}
 .b-other{color:var(--other); background:rgba(147,160,189,.14)}
 .b-gateway{color:var(--gateway); background:rgba(245,181,68,.13)}
 .b-no-mx,.b-dead{color:var(--dead); background:rgba(251,111,132,.13)}
+.b-dns-error{color:var(--other); background:rgba(147,160,189,.14); border:1px dashed rgba(147,160,189,.4)}
 .b-bad-email-format,.b-disposable{color:var(--violet); background:rgba(181,156,255,.13)}
 
 /* KPIs */
@@ -250,7 +251,7 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); co
         <span class="always">on</span>
         <div class="txt"><strong>MX & gateway check</strong><small>Park no-MX / null-MX domains and secure email gateways. Tag survivors google · microsoft · other.</small></div>
         <button class="info" type="button" aria-label="About the MX check" onclick="event.stopPropagation()">?</button>
-        <span class="tip">Looks up each domain's mail servers (MX) over DNS. Domains with no live MX, or sitting behind a known secure gateway (<b>Mimecast, Proofpoint, Barracuda</b>…), get parked; the rest are tagged by provider.<span class="warn">A transient DNS hiccup can occasionally mislabel a live domain — re-run if a batch looks off.</span></span>
+        <span class="tip">Looks up each domain's mail servers (MX) over DNS. Domains with no live MX, or sitting behind a known secure gateway (<b>Mimecast, Proofpoint, Barracuda</b>…), get parked; the rest are tagged by provider.<span class="warn">Domains the resolver never answered for are marked <b>DNS error</b> and kept, never parked as dead — re-run to settle them.</span></span>
       </div>
       <label class="opt">
         <input type="checkbox" class="sw" id="optFormat">
@@ -340,7 +341,10 @@ const isBadFormat = e => !!e && !EMAIL_RE.test(e);
 function classify(status, answer){
   // answer hosts: keep trailing dot so null-MX ('.') is detectable
   const mx = (answer||[]).filter(a=>a.type===15).map(a=>a.data.trim().split(/\s+/).pop().toLowerCase());
-  if(status!==0 || mx.length===0) return "no-mx";
+  // Only NOERROR(0) and NXDOMAIN(3) are answers. SERVFAIL/REFUSED/etc mean the
+  // resolver failed — never let that render as the verdict "no-mx".
+  if(status!==0 && status!==3) return "dns-error";
+  if(mx.length===0) return "no-mx";                      // NXDOMAIN or NOERROR/NODATA
   if(mx.every(h=>h===".")) return "no-mx";               // RFC 7505 null MX
   const j = mx.join(" ");
   if(GATEWAY.some(g=>j.includes(g))) return "gateway";
@@ -365,22 +369,30 @@ function domainMatches(ed, cd){
   return false;
 }
 
-/* ── DoH resolver: 2 Google attempts then Cloudflare (mirrors dig's retry) ── */
+/* ── DoH resolver: alternate Google/Cloudflare with backoff ────────────────
+   A failed lookup is NOT a dead domain. Retry across both providers, and if
+   they all fail, say so ("dns-error") instead of parking a live domain.      */
+const sleep = ms => new Promise(r=>setTimeout(r, ms));
 async function resolveMX(domain){
+  const q = encodeURIComponent(domain);
   const tries = [
-    {u:`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, h:{}},
-    {u:`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=MX`, h:{}},
-    {u:`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(domain)}&type=MX`, h:{accept:"application/dns-json"}},
+    {u:`https://dns.google/resolve?name=${q}&type=MX`, h:{}},
+    {u:`https://cloudflare-dns.com/dns-query?name=${q}&type=MX`, h:{accept:"application/dns-json"}},
+    {u:`https://dns.google/resolve?name=${q}&type=MX`, h:{}},
+    {u:`https://cloudflare-dns.com/dns-query?name=${q}&type=MX`, h:{accept:"application/dns-json"}},
   ];
-  for(const t of tries){
+  for(let i=0;i<tries.length;i++){
     try{
-      const r = await fetch(t.u, {headers:t.h});
-      if(!r.ok) continue;
-      const d = await r.json();
-      return classify(d.Status, d.Answer);
+      const r = await fetch(tries[i].u, {headers:tries[i].h});
+      if(r.ok){
+        const d = await r.json();
+        const v = classify(d.Status, d.Answer);
+        if(v !== "dns-error") return v;
+      }
     }catch(_){ /* next provider */ }
+    await sleep(300 * (i + 1));            // back off — providers rate-limit bursts
   }
-  return "no-mx";   // persistent failure → same verdict the CLI gives on a dead lookup
+  return "dns-error";
 }
 async function mapPool(items, n, fn, onEach){
   const out = new Array(items.length); let i = 0;
@@ -395,6 +407,7 @@ const reduce = matchMedia("(prefers-reduced-motion:reduce)").matches;
 let ROWS=[], FIELDS=[], EMAIL_COL="", STEM="leads";
 const VERDICTS = {google:["Google Workspace","b-google"], microsoft:["Microsoft 365","b-microsoft"],
   other:["Other MX","b-other"], gateway:["Gateway","b-gateway"], "no-mx":["No MX","b-no-mx"],
+  "dns-error":["DNS error","b-dns-error"],
   "bad-email-format":["Bad format","b-bad-email-format"], disposable:["Disposable","b-disposable"], "":["—","b-other"]};
 const findCol = (...names) => { const w = new Set(names.map(s=>s.toLowerCase()));
   return FIELDS.find(f => w.has(f.trim().toLowerCase())) || ""; };
@@ -454,7 +467,7 @@ async function run(){
     return (e.includes("@") && !(doFormat && isBadFormat(e))) ? e.split("@")[1] : "";
   }).filter(Boolean))];
 
-  const tally = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0};
+  const tally = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0, "dns-error":0};
   renderTallies(tally, 0, uniq.length);
   const verdict = {};
   let done = 0;
@@ -490,7 +503,7 @@ async function run(){
   renderResults(domainCol, doFormat, doDomain);
 }
 function finalLeadTallies(){
-  const t = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0};
+  const t = {google:0, microsoft:0, other:0, gateway:0, "no-mx":0, "dns-error":0};
   for(const r of ROWS){
     if(r.park_reason==="gateway") t.gateway++;
     else if(r.park_reason==="no-mx") t["no-mx"]++;
@@ -501,10 +514,11 @@ function finalLeadTallies(){
 
 function renderTallies(t, done, total){
   const items = [["google",t.google],["microsoft",t.microsoft],["other",t.other],["gateway",t.gateway],["no-mx",t["no-mx"]]];
+  if(t["dns-error"]) items.push(["dns-error",t["dns-error"]]);
   $("#tallies").innerHTML = `<span class="tally"><span class="d" style="background:var(--accent)"></span>resolved <b>${done}</b>/${total}</span>` +
     items.map(([k,n])=>`<span class="tally"><span class="d" style="background:${cssVar(k)}"></span>${VERDICTS[k][0]} <b>${n}</b></span>`).join("");
 }
-const cssVar = k => ({google:"var(--google)",microsoft:"var(--ms)",other:"var(--other)",gateway:"var(--gateway)","no-mx":"var(--dead)","bad-email-format":"var(--violet)",disposable:"var(--violet)"}[k]||"var(--other)");
+const cssVar = k => ({google:"var(--google)",microsoft:"var(--ms)",other:"var(--other)",gateway:"var(--gateway)","no-mx":"var(--dead)","dns-error":"var(--other)","bad-email-format":"var(--violet)",disposable:"var(--violet)"}[k]||"var(--other)");
 function pushStream(dom, v){
   const s = $("#stream");
   const line = document.createElement("div");
@@ -544,6 +558,8 @@ function renderResults(domainCol, doFormat, doDomain){
   let note = `Checks run: ${ran.join(" · ")}.`;
   if(doDomain && !domainCol) note += " No company-domain column found — mismatch flag skipped.";
   else if(doDomain) note += ` Domain mismatch flagged (non-blocking, kept): ${mismatch.toLocaleString()}.`;
+  const unresolved = ROWS.filter(r=>r.mx==="dns-error").length;
+  if(unresolved) note += ` ⚠ ${unresolved.toLocaleString()} leads never resolved (DNS error) — kept, not parked. Re-run to settle them.`;
   $("#checkNote").textContent = note;
 
   // table: top 12 rows, status badge + a couple identity columns

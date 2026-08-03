@@ -61,7 +61,8 @@ The input needs an **email column** (default `email`). A company-domain column
 Three columns appended to every row:
 
 - `park_reason` — `""` if it passes, else `bad-email-format` \| `no-mx` \| `gateway` \| `disposable`
-- `mx` — provider for survivors: `microsoft` \| `google` \| `other` (`""` if parked/unchecked)
+- `mx` — provider for survivors: `microsoft` \| `google` \| `other` \| `dns-error` (`""` if parked/unchecked)
+  - `dns-error` = the resolver never answered (timeout / SERVFAIL / rate-limit). The row is **kept, not parked** — a DNS failure is not a verdict. Re-run to settle them.
 - `domain_mismatch` — `yes` if the email domain doesn't match `company_domain` (does **not** park)
 
 `--split` additionally writes `<input>_clean.csv` (passes) and `<input>_parked.csv`.
