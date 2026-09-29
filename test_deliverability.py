@@ -58,6 +58,18 @@ def test_toggles():
     print("ok")
 
 
+def test_spam_words_json_in_sync():
+    """The web UI reads spam_words.json; it must match spam_lint.py."""
+    import json
+    from pathlib import Path
+
+    import spam_lint as s
+    d = json.loads((Path(__file__).parent / "spam_words.json").read_text())
+    assert d["high"] == s.HIGH_PHRASES + s.HIGH_WORDS and d["med"] == s.MED_WORDS, \
+        "stale: python3 spam_lint.py --export-words > spam_words.json"
+
+
 if __name__ == "__main__":
+    test_spam_words_json_in_sync()
     test_toggles()
     test_dns_failure_is_not_no_mx()

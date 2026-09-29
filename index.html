@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MXSWEEP — lead deliverability console</title>
+<title>MXSWEEP — cold email health console</title>
 <meta name="description" content="Clean a lead CSV of dead domains and secure email gateways. MX checks run in your browser; nothing is uploaded.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230A0E17'/%3E%3Cpath d='M7 22V10l9 7 9-7v12' fill='none' stroke='%238B93F8' stroke-width='2.4' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -204,6 +204,48 @@ tbody td.email{color:var(--text); font-family:"JetBrains Mono",monospace; font-s
 footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); color:var(--faint); font-size:12.5px;
   display:flex; justify-content:space-between; gap:14px; flex-wrap:wrap}
 
+/* tabs */
+.tabs{display:flex; gap:6px; flex-wrap:wrap; margin:-20px 0 34px; border-bottom:1px solid var(--border)}
+.tab-btn{font:500 14px "Space Grotesk",sans-serif; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent;
+  padding:11px 14px; cursor:pointer; margin-bottom:-1px}
+.tab-btn:hover{color:var(--text)}
+.tab-btn[aria-selected="true"]{color:var(--text); border-bottom-color:var(--accent)}
+.tab-btn:focus-visible{outline:2px solid var(--accent-bright); outline-offset:-2px; border-radius:6px}
+.panel-h{margin:0 0 6px; font-size:clamp(24px,4vw,34px); font-weight:600; letter-spacing:-.02em; line-height:1.1}
+.panel-lead{color:var(--muted); font-size:15.5px; max-width:640px; margin:0 0 6px}
+
+/* forms */
+.fld{display:flex; flex-direction:column; gap:6px; flex:1 1 220px; min-width:0}
+.fld > span{font:500 11px "JetBrains Mono",monospace; letter-spacing:.12em; text-transform:uppercase; color:var(--faint)}
+.fld input[type=text],.fld input[type=password],.fld select,.fld textarea{font:14px "Space Grotesk",sans-serif; color:var(--text);
+  background:var(--raised); border:1px solid var(--border); border-radius:10px; padding:11px 13px; width:100%}
+.fld textarea{min-height:170px; resize:vertical; font-family:"JetBrains Mono",monospace; font-size:13px; line-height:1.55}
+.fld input:focus-visible,.fld select:focus-visible,.fld textarea:focus-visible{outline:2px solid var(--accent-bright); outline-offset:1px}
+.fld small{color:var(--faint); font-size:12.5px}
+.frow{display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:14px}
+.frow:first-of-type{margin-top:0}
+.btn-sm{padding:10px 16px; font-size:14px}
+.stat{font-size:13px; color:var(--muted)}
+.stat.ok{color:var(--clean)} .stat.bad{color:var(--dead)}
+.filebtn{position:relative; overflow:hidden}
+.filebtn input{position:absolute; inset:0; opacity:0; cursor:pointer}
+
+/* findings */
+.find{display:flex; gap:12px; padding:11px 0; border-bottom:1px solid rgba(34,43,61,.55); font-size:14px; align-items:baseline}
+.find:last-child{border-bottom:none}
+.find .id{flex:0 0 172px; font:12px "JetBrains Mono",monospace; color:var(--faint)}
+.find .msg{flex:1; white-space:pre-wrap; overflow-wrap:anywhere}
+.sev{flex:0 0 auto; width:9px; height:9px; border-radius:50%; background:var(--faint); transform:translateY(-1px)}
+.sev.red{background:var(--dead)} .sev.orange{background:var(--gateway)} .sev.yellow{background:#e6d36a}
+.sev.pass{background:var(--clean)} .sev.info,.sev.skip{background:var(--faint)}
+.verdict{font:600 13px "JetBrains Mono",monospace; letter-spacing:.08em; padding:5px 12px; border-radius:99px; display:inline-block}
+.v-bad{color:var(--dead); background:rgba(251,111,132,.13)} .v-warn{color:var(--gateway); background:rgba(245,181,68,.13)}
+.v-ok{color:var(--clean); background:rgba(61,220,151,.12)}
+.sample{background:var(--bg2); border:1px solid var(--border); border-radius:11px; padding:14px 16px; font-size:13.5px; white-space:pre-wrap; margin-top:12px}
+.sample b{display:block; font:500 11px "JetBrains Mono",monospace; letter-spacing:.1em; color:var(--faint); text-transform:uppercase; margin-bottom:6px}
+.actions .stat{margin-left:auto}
+@media (max-width:640px){ .find{flex-wrap:wrap} .find .id{flex-basis:100%} }
+
 @media (max-width:640px){
   .kpis{grid-template-columns:repeat(2,1fr)}
   .top{margin-bottom:32px}
@@ -224,6 +266,25 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); co
     <div class="doh"><span class="dot"></span> resolving via DoH · Google + Cloudflare</div>
   </header>
 
+  <nav class="tabs" role="tablist" aria-label="Checks">
+    <button class="tab-btn" role="tab" data-tab="mx" aria-selected="true">Lead list · MX</button>
+    <button class="tab-btn" role="tab" data-tab="copy" aria-selected="false">Copy</button>
+    <button class="tab-btn" role="tab" data-tab="inbox" aria-selected="false">Inbox health</button>
+    <button class="tab-btn" role="tab" data-tab="infra" aria-selected="false">Campaign infra</button>
+  </nav>
+
+  <!-- sequencer connection, shared by the API tabs -->
+  <section class="card hidden" id="keyCard" style="margin-top:0;margin-bottom:26px">
+    <div class="card-h"><span class="idx">API</span> sequencer</div>
+    <div class="frow">
+      <label class="fld" style="flex:0 1 150px"><span>Tool</span><select id="seqTool"><option>Instantly</option></select></label>
+      <label class="fld"><span>API key</span><input type="password" id="apiKey" autocomplete="off" placeholder="Instantly v2 key (read scope is enough)"></label>
+      <button class="btn btn-primary btn-sm" id="connect">Connect</button>
+    </div>
+    <p class="note" style="margin-top:12px"><span id="connStat" class="stat">Not connected.</span> Read-only calls go through a stateless proxy (<span class="mono">/api/instantly</span>) because Instantly blocks browsers. Your key is sent per request, never stored on a server, and kept only for this tab session.</p>
+  </section>
+
+  <div class="tab" id="tab-mx">
   <section class="hero">
     <p class="eyebrow">deliverability · pre-flight</p>
     <h1>Strip the dead domains and gateways <em>before you hit send.</em></h1>
@@ -319,13 +380,78 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); co
     </div>
   </section>
 
+  </div>
+
+  <!-- copy -->
+  <div class="tab hidden" id="tab-copy">
+    <h2 class="panel-h">Will this copy land — and render?</h2>
+    <p class="panel-lead">Paste a subject and body, or pick a campaign to check every step and variant of the live sequence. Add your lead CSV to catch merge tags with no column, blank values and spam words hiding in lead data.</p>
+    <section class="card">
+      <div class="card-h"><span class="idx">01</span> copy</div>
+      <div class="frow"><label class="fld"><span>Campaign (optional, needs API key)</span><select id="copyCamp" disabled><option value="">— paste copy below —</option></select><small>A selected campaign overrides the pasted text.</small></label></div>
+      <div class="frow"><label class="fld"><span>Subject</span><input type="text" id="copySubj" placeholder="quick question on {{companyName}}"></label></div>
+      <div class="frow"><label class="fld"><span>Body</span><textarea id="copyBody" placeholder="Hi {{firstName}}, ..."></textarea></label></div>
+      <div class="frow">
+        <label class="btn btn-ghost btn-sm filebtn">Add lead CSV (optional)<input type="file" accept=".csv,text/csv" id="copyLeads"></label>
+        <span class="stat" id="copyLeadStat"></span>
+      </div>
+      <div class="actions"><button class="btn btn-primary" id="copyRun">Check copy</button></div>
+      <div class="err hidden" id="copyErr"></div>
+    </section>
+    <section class="card hidden" id="copyOut"></section>
+  </div>
+
+  <!-- inbox health -->
+  <div class="tab hidden" id="tab-inbox">
+    <h2 class="panel-h">Which sending domains are burning?</h2>
+    <p class="panel-lead">Capacity, bounce and reply per sending domain. Every run is saved in this browser and the trend check compares this week with last week: rising bounce, falling replies, one domain far worse than the rest, Google inboxes delivering while Microsoft ones don't.</p>
+    <section class="card">
+      <div class="card-h"><span class="idx">01</span> run</div>
+      <div class="frow">
+        <label class="fld"><span>Campaign</span><select id="inboxCamp" disabled><option value="">All live campaigns (whole fleet)</option></select></label>
+        <label class="fld" style="flex:0 1 150px"><span>Window</span><select id="inboxWin"><option value="14">14 days</option><option value="28">28 days</option><option value="60">60 days</option></select></label>
+        <button class="btn btn-primary btn-sm" id="inboxRun">Run inbox check</button>
+      </div>
+      <div class="err hidden" id="inboxErr"></div>
+    </section>
+    <section class="card hidden" id="inboxOut"></section>
+    <section class="card" id="trendCard">
+      <div class="card-h"><span class="idx">02</span> trends &amp; history</div>
+      <div id="trendOut"></div>
+      <div class="actions">
+        <button class="btn btn-ghost btn-sm" id="dlHist">Download history CSV</button>
+        <label class="btn btn-ghost btn-sm filebtn">Import history CSV<input type="file" accept=".csv,text/csv" id="impHist"></label>
+        <span class="stat" id="histStat"></span>
+      </div>
+      <p class="note">History lives in this browser only. The CSV is the same format the CLI saves to <span class="mono">history/</span>, so <span class="mono">python3 trends.py</span> and Claude Code's <span class="mono">/health-check trends</span> read it too.</p>
+    </section>
+  </div>
+
+  <!-- campaign infra -->
+  <div class="tab hidden" id="tab-infra">
+    <h2 class="panel-h">Is the infrastructure ready for this campaign?</h2>
+    <p class="panel-lead">Recipient MX mix, secure-gateway share and projected bounce against the campaign's sending fleet, plus dead or under-warmed inboxes and risky settings. Once it has sent: actual bounce and whether Google or Microsoft recipients are bouncing more.</p>
+    <section class="card">
+      <div class="card-h"><span class="idx">01</span> run</div>
+      <div class="frow">
+        <label class="fld"><span>Campaign</span><select id="infraCamp" disabled><option value="">— connect first —</option></select></label>
+        <label class="btn btn-ghost btn-sm filebtn">Add lead CSV (optional)<input type="file" accept=".csv,text/csv" id="infraLeads"></label>
+        <button class="btn btn-primary btn-sm" id="infraRun">Run lint</button>
+      </div>
+      <div class="frow"><span class="stat" id="infraLeadStat"></span></div>
+      <div class="err hidden" id="infraErr"></div>
+    </section>
+    <section class="card hidden" id="infraOut"></section>
+  </div>
+
   <footer>
-    <span>Runs entirely in your browser · leads never leave this tab</span>
+    <span>Lead CSVs never leave this tab · sequencer calls pass a stateless read-only proxy</span>
     <span class="mono">MX via DNS-over-HTTPS</span>
   </footer>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="js/checks.js"></script>
 <script>
 "use strict";
 /* ── classification logic, ported 1:1 from deliverability.py ─────────────── */
@@ -603,6 +729,206 @@ $("#download").addEventListener("click", ()=>{
   a.download = `${STEM}_${full?"checked":"clean"}.csv`;
   a.click(); URL.revokeObjectURL(a.href);
 });
+</script>
+<script>
+"use strict";
+/* ── tabs + the checks that need a sequencer (logic lives in js/checks.js) ── */
+const TABS = ["mx","copy","inbox","infra"];
+function showTab(name){
+  if(!TABS.includes(name)) name = "mx";
+  TABS.forEach(t => $("#tab-"+t).classList.toggle("hidden", t !== name));
+  document.querySelectorAll(".tab-btn").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  $("#keyCard").classList.toggle("hidden", name === "mx");
+  if(name === "inbox") renderTrends();
+  history.replaceState(null, "", "#" + name);
+}
+document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
+
+/* ── connect ─────────────────────────────────────────────────────────────── */
+let API = null, CAMPS = [], SPAM = null;
+const store = (k, v) => { try{ v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); }catch(_){} };
+const stored = k => { try{ return sessionStorage.getItem(k); }catch(_){ return null; } };
+const errBox = (id, e) => { const b = $(id); b.classList.toggle("hidden", !e); if(e) b.textContent = e.message || String(e); };
+async function busy(btn, errId, fn){
+  const label = btn.textContent; btn.disabled = true; btn.textContent = "Working…"; errBox(errId, null);
+  try{ await fn(); }catch(e){ errBox(errId, e); }
+  finally{ btn.disabled = false; btn.textContent = label; }
+}
+const needApi = () => { if(!API) throw new Error("Connect your sequencer API key first (top of this tab)."); };
+async function getSpam(){ return SPAM ||= Checks.makeSpam(await (await fetch("spam_words.json")).json()); }
+
+async function connect(){
+  const key = $("#apiKey").value.trim();
+  if(!key) throw new Error("Paste your API key first.");
+  const api = Checks.instantly(key);
+  CAMPS = await api.campaigns();           // doubles as the key check: a bad key throws here
+  API = api; store("mxsweep.key", key);
+  const opt = c => `<option value="${esc(c.id)}">${c.active ? "● " : "○ "}${esc(c.name || c.id)}</option>`;
+  $("#copyCamp").innerHTML = `<option value="">— paste copy below —</option>` + CAMPS.map(opt).join("");
+  $("#inboxCamp").innerHTML = `<option value="">All live campaigns (whole fleet)</option>` + CAMPS.map(opt).join("");
+  $("#infraCamp").innerHTML = CAMPS.map(opt).join("");
+  ["#copyCamp","#inboxCamp","#infraCamp"].forEach(s => $(s).disabled = false);
+  const st = $("#connStat"); st.className = "stat ok"; st.textContent = `Connected · ${CAMPS.length} campaigns (${CAMPS.filter(c=>c.active).length} live).`;
+}
+$("#connect").addEventListener("click", async e => {
+  const b = e.target; b.disabled = true;
+  try{ await connect(); }
+  catch(err){ const st = $("#connStat"); st.className = "stat bad"; st.textContent = err.message; }
+  finally{ b.disabled = false; }
+});
+{ const k = stored("mxsweep.key"); if(k){ $("#apiKey").value = k; connect().catch(() => store("mxsweep.key", null)); } }
+
+/* ── shared renderers ────────────────────────────────────────────────────── */
+const SEV_ORDER = {red:0, orange:1, yellow:2, info:3, skip:4, pass:5};
+function findingsHtml(list){
+  return [...list].sort((a,b) => SEV_ORDER[a.sev] - SEV_ORDER[b.sev]).map(f =>
+    `<div class="find"><span class="sev ${f.sev}" title="${f.sev}"></span><span class="id">${esc(f.id)}</span><span class="msg">${esc(f.msg)}</span></div>`).join("");
+}
+const verdictHtml = (text, cls) => `<span class="verdict ${cls}">${esc(text)}</span>`;
+const worst = list => list.some(f=>f.sev==="red") ? "red" : list.some(f=>f.sev==="orange"||f.sev==="yellow") ? "warn" : "ok";
+function download(name, csv){
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], {type:"text/csv"})); a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+const stamp = () => new Date().toISOString().slice(0,16).replace(/[-:]/g,"").replace("T","-");
+const parseCsv = file => new Promise(ok => Papa.parse(file, {header:true, skipEmptyLines:"greedy", complete:r => ok(r)}));
+const downloadBtn = (id, label) => `<div class="actions"><button class="btn btn-primary btn-sm" id="${id}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/></svg>${label}</button></div>`;
+const findingsCsv = (f, extra = {}) => Checks.toCsv(f.map(x => ({run_at:new Date().toISOString(), ...extra, severity:x.sev, check:x.id, detail:x.msg})), ["run_at", ...Object.keys(extra), "severity","check","detail"]);
+
+/* ── copy ────────────────────────────────────────────────────────────────── */
+let COPY_LEADS = null;
+$("#copyLeads").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = await parseCsv(f); COPY_LEADS = {rows:r.data, cols:r.meta.fields || []};
+  $("#copyLeadStat").textContent = `${f.name} · ${COPY_LEADS.rows.length.toLocaleString()} rows · ${COPY_LEADS.cols.length} columns`;
+});
+$("#copyRun").addEventListener("click", e => busy(e.target, "#copyErr", async () => {
+  const spam = await getSpam(), cid = $("#copyCamp").value;
+  let steps, title;
+  if(cid){ needApi(); const c = await API.campaign(cid); steps = c.steps; title = c.name; }
+  else{
+    if(!$("#copyBody").value.trim() && !$("#copySubj").value.trim()) throw new Error("Paste a subject and body, or pick a campaign.");
+    steps = [[{subject:$("#copySubj").value, body:$("#copyBody").value}]]; title = "pasted copy";
+  }
+  const sys = (API || Checks.instantly("")).systemTags;
+  const {findings, samples} = Checks.copyCheck(steps, COPY_LEADS?.rows || [], COPY_LEADS?.cols || [], sys, spam);
+  const w = worst(findings);
+  const skipped = COPY_LEADS ? "" : `<p class="note">No lead CSV added, so merge tags and lead values were not checked.</p>`;
+  $("#copyOut").classList.remove("hidden");
+  $("#copyOut").innerHTML = `<div class="card-h"><span class="idx">02</span> result · ${esc(title)}</div>
+    ${verdictHtml(w === "red" ? "BLOCKERS" : w === "warn" ? "WARNINGS" : "CLEAN", w === "red" ? "v-bad" : w === "warn" ? "v-warn" : "v-ok")}
+    <div style="margin-top:14px">${findingsHtml(findings)}</div>${skipped}
+    ${samples.map(s => `<div class="sample"><b>rendered for ${esc(s.to)} · ${esc(s.label)}</b>Subject: ${esc(s.subject)}\n\n${esc(s.body)}</div>`).join("")}
+    ${downloadBtn("copyDl", "Download findings CSV")}`;
+  $("#copyDl").addEventListener("click", () => download(`copy-check_${stamp()}.csv`, findingsCsv(findings, {subject:title})));
+}));
+
+/* ── inbox health + history ──────────────────────────────────────────────── */
+// History is bucketed by a hash of the API key, so two workspaces never mix in one browser.
+async function histKey(){
+  const k = $("#apiKey").value.trim() || "anon";
+  const h = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(k));
+  return "mxsweep.hist." + [...new Uint8Array(h)].slice(0, 6).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function loadHist(){ try{ return JSON.parse(localStorage.getItem(await histKey()) || "[]"); }catch(_){ return []; } }
+async function saveHist(rows){
+  try{ localStorage.setItem(await histKey(), JSON.stringify(rows)); return true; }catch(_){ return false; }
+}
+async function renderTrends(){
+  const rows = await loadHist(), t = Checks.trends(rows);
+  const days = [...new Set(rows.map(r => r.date))].sort();
+  $("#histStat").textContent = rows.length ? `${days.length} days on record (${days[0]} → ${days[days.length-1]}) · ${rows.length.toLocaleString()} inbox-days` : "";
+  $("#trendOut").innerHTML = !t.window ? `<p class="note" style="border:0;margin:0;padding:0">${esc(t.note)}. Run the inbox check now, and again on later days, or import a history CSV.</p>`
+    : `<p class="note" style="border:0;margin:0 0 8px;padding:0">Last 7 days (${t.window.recent[0]} → ${t.window.recent[1]}) vs the 7 before.</p>`
+      + (t.findings.length ? findingsHtml(t.findings) : `<div class="find"><span class="sev pass"></span><span class="id">trends</span><span class="msg">Nothing moved.</span></div>`);
+}
+$("#dlHist").addEventListener("click", async () => { const r = await loadHist(); if(r.length) download(`inbox-history_${stamp()}.csv`, Checks.toCsv(r, Checks.HIST_COLS)); });
+$("#impHist").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = await parseCsv(f);
+  const rows = r.data.filter(x => x.date && x.email).map(x => ({date:x.date, email:x.email, domain:x.domain || Checks.dom(x.email), esp:x.esp || "other",
+    sent:+x.sent || 0, bounced:+x.bounced || 0, replies:+x.replies || 0}));
+  await saveHist(Checks.mergeHistory(await loadHist(), rows)); e.target.value = ""; renderTrends();
+});
+$("#inboxRun").addEventListener("click", e => busy(e.target, "#inboxErr", async () => {
+  needApi();
+  const cid = $("#inboxCamp").value, win = +$("#inboxWin").value;
+  const ids = cid ? [cid] : CAMPS.filter(c => c.active).map(c => c.id);
+  const attached = new Set((await Promise.all(ids.map(id => API.campaign(id)))).flatMap(c => c.senders).map(Checks.dom));
+  const accounts = await API.accounts();
+  const fleet = cid ? accounts.filter(a => attached.has(Checks.dom(a.email))) : accounts;
+  if(!fleet.length) throw new Error("No sending inboxes found (no live campaign, or none attached).");
+  const end = new Date().toISOString().slice(0,10), start = new Date(Date.now() - win*864e5).toISOString().slice(0,10);
+  const raw = await API.inboxDaily(fleet.map(a => a.email), start, end);
+  const esp = Object.fromEntries(fleet.map(a => [a.email, a.esp]));
+  const rows = raw.map(r => ({...r, domain:Checks.dom(r.email), esp:esp[r.email] || "other"}));
+  const kept = await saveHist(Checks.mergeHistory(await loadHist(), rows));
+  const last = Checks.lastSendDay(rows);
+  const doms = Object.entries(Checks.rollup(rows, fleet, last)).map(([d, m]) => [d, Checks.classifyDomain(m, attached.has(d))])
+    .sort((a, b) => b[1].bounce_pct - a[1].bounce_pct);
+  const al = Checks.allocation(Object.fromEntries(doms));
+  const recover = doms.filter(([, m]) => m.action === "recover");
+  const kpi = (n, l, c = "") => `<div class="kpi ${c}"><div class="n">${n}</div><div class="l">${l}</div></div>`;
+  const pct = x => (x * 100).toFixed(1) + "%";
+  const cls = m => m.bounce_verdict === "RED" ? "b-dead" : m.bounce_verdict === "NOTE" ? "b-gateway" : "b-google";
+  $("#inboxOut").classList.remove("hidden");
+  $("#inboxOut").innerHTML = `<div class="card-h"><span class="idx">01</span> result · ${start} → ${end}</div>
+    <div class="kpis">${kpi(al.active_domains, "active domains")}${kpi(al.active_capacity.toLocaleString(), "daily capacity")}
+      ${kpi(pct(al.utilisation), "utilisation, last send day", "k-gate")}${kpi(recover.length, "recommend recovery", recover.length ? "k-parked" : "k-clean")}</div>
+    <div class="tbl-wrap" style="margin-top:16px"><table><thead><tr><th>domain</th><th>state</th><th>inboxes</th><th>sent</th><th>bounce</th><th>reply</th><th>action</th></tr></thead><tbody>
+    ${doms.map(([d, m]) => `<tr class="${m.active ? "" : "parked"}"><td class="email">${esc(d)}</td><td>${m.active ? "active" : "parked"}</td><td>${m.inboxes}</td><td>${m.sent.toLocaleString()}</td>
+      <td><span class="badge ${cls(m)}">${pct(m.bounce_pct)}</span></td><td>${m.sent >= 150 ? pct(m.reply_pct) + " · " + m.reply_verdict : "n/a"}</td><td>${m.action ? esc(m.action) : "—"}</td></tr>`).join("")}
+    </tbody></table></div>
+    <p class="note">${kept ? "This run was added to your history." : "Could not save to browser storage — download the history CSV to keep it."} Blacklist checks need the CLI (<span class="mono">inbox_health.py</span>, MXToolbox key).</p>
+    ${downloadBtn("inboxDl", "Download this run (domains CSV)")}`;
+  const cols = ["domain","state","inboxes","capacity","sent","bounced","replies","bounce_pct","reply_pct","bounce_verdict","reply_verdict","action"];
+  $("#inboxDl").addEventListener("click", () => download(`inbox-health_${stamp()}.csv`, Checks.toCsv(doms.map(([d, m]) =>
+    ({domain:d, state:m.active ? "active" : "parked", ...m, bounce_pct:m.bounce_pct.toFixed(4), reply_pct:m.reply_pct.toFixed(4), action:m.action || ""})), cols)));
+  renderTrends();
+}));
+
+/* ── campaign infra ──────────────────────────────────────────────────────── */
+const FREE_PROVIDER = {"gmail.com":"google","googlemail.com":"google","hotmail.com":"microsoft","hotmail.co.uk":"microsoft","outlook.com":"microsoft",
+  "outlook.co.uk":"microsoft","live.com":"microsoft","msn.com":"microsoft","yahoo.com":"other","yahoo.co.uk":"other","aol.com":"other",
+  "icloud.com":"other","me.com":"other","proton.me":"other","protonmail.com":"other"};
+let INFRA_LEADS = null;
+$("#infraLeads").addEventListener("change", async e => {
+  const f = e.target.files[0]; if(!f) return;
+  const r = await parseCsv(f), col = (r.meta.fields || []).find(c => c.trim().toLowerCase() === "email");
+  if(!col){ INFRA_LEADS = null; $("#infraLeadStat").textContent = "No email column in that file."; return; }
+  const counts = {}; let total = 0;
+  for(const row of r.data){ const m = (row[col] || "").trim().toLowerCase(); if(m.includes("@")){ total++; const d = m.split("@")[1]; counts[d] = (counts[d] || 0) + 1; } }
+  INFRA_LEADS = {counts, total};
+  $("#infraLeadStat").textContent = `${f.name} · ${total.toLocaleString()} leads · ${Object.keys(counts).length.toLocaleString()} domains (MX lookups run in your browser)`;
+});
+async function mxProfile(counts, onProgress){
+  const domains = Object.keys(counts); let done = 0;
+  const klass = await mapPool(domains, 12, d => FREE_PROVIDER[d] || resolveMX(d), () => onProgress(++done, domains.length));
+  const by = {}, unresolvedDomains = [];
+  domains.forEach((d, i) => { by[klass[i]] = (by[klass[i]] || 0) + counts[d]; if(klass[i] === "dns-error") unresolvedDomains.push(d); });
+  const unresolved = by["dns-error"] || 0, total = (Object.values(counts).reduce((a, b) => a + b, 0) - unresolved) || 1;
+  return {share:Object.fromEntries(["microsoft","google","gateway","other","no-mx"].map(b => [b, (by[b] || 0) / total])),
+    leads_by_bucket:by, unresolved, unresolved_domains:unresolvedDomains.sort()};
+}
+$("#infraRun").addEventListener("click", e => busy(e.target, "#infraErr", async () => {
+  needApi();
+  const cid = $("#infraCamp").value; if(!cid) throw new Error("Pick a campaign.");
+  const btn = e.target, camp = await API.campaign(cid), senders = new Set(camp.senders);
+  const fleet = (await API.accounts()).filter(a => senders.has(a.email));
+  const target = INFRA_LEADS ? await mxProfile(INFRA_LEADS.counts, (d, n) => { btn.textContent = `MX ${d}/${n}…`; }) : null;
+  const stats = await API.campaignStats(cid);
+  const leads = stats.sent ? await API.campaignLeads(cid) : null;
+  const findings = Checks.infraLint(camp, fleet, target, stats, leads), v = Checks.infraVerdict(findings);
+  const doms = new Set(fleet.map(a => Checks.dom(a.email)));
+  $("#infraOut").classList.remove("hidden");
+  $("#infraOut").innerHTML = `<div class="card-h"><span class="idx">02</span> result · ${esc(camp.name)}</div>
+    ${verdictHtml(v, v === "DO NOT SEND" ? "v-bad" : v === "FIX FIRST" ? "v-warn" : "v-ok")}
+    <p class="note" style="border:0;padding:0">${fleet.length ? `Fleet: ${fleet.length} inboxes across ${doms.size} domains.` : "No senders attached to this campaign."}</p>
+    <div>${findingsHtml(findings)}</div>${downloadBtn("infraDl", "Download findings CSV")}`;
+  $("#infraDl").addEventListener("click", () => download(`campaign-infra_${stamp()}.csv`, findingsCsv(findings, {campaign:camp.name, verdict:v})));
+}));
+
+showTab((location.hash || "").slice(1));
 </script>
 <!-- Vercel Web Analytics (static-site method). Served only when Web Analytics is enabled for the project. -->
 <script defer src="/_vercel/insights/script.js"></script>
