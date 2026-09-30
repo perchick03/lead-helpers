@@ -59,6 +59,12 @@ f = Object.fromEntries(C.infraLint(camp, g, null, { sent: 1000, contacted: 1000,
 assert(f["live-bounce-rate"].sev === "red" && f["bounce-esp-gap"].sev === "orange" && f["bounce-esp-gap"].msg.includes("microsoft"));
 assert.strictEqual(C.toCsv([{ a: 'x,"y"', b: 1 }], ["a", "b"]), 'a,b\r\n"x,""y""",1');
 
+// blacklist verdicts (inbox_health.py: DBL is fatal, SURBL-only is nothing, timeout is never clean)
+assert.strictEqual(C.blacklistVerdict({ Failed: [{ Name: "Spamhaus DBL" }] }).verdict, "BLACKLISTED");
+assert.strictEqual(C.blacklistVerdict({ Failed: [{ Name: "SURBL multi" }] }).verdict, "clean");
+assert.strictEqual(C.blacklistVerdict({ Failed: [{ Name: "Barracuda" }] }).verdict, "minor");
+assert.strictEqual(C.blacklistVerdict({ Timeouts: [{ Name: "Spamhaus DBL" }] }).verdict, "not checked");
+
 // proxy client: paginates until an empty page
 (async () => {
   const pages = [{ items: [{ id: "1", status: 1 }], next_starting_after: "c1" }, { items: [], next_starting_after: "c2" }];

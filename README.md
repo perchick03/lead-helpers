@@ -113,13 +113,13 @@ complete worked example (~100 lines).
 
 | Tab | Input | Where it runs |
 |---|---|---|
-| Lead list · MX | lead CSV | browser (DNS-over-HTTPS). Lead data never leaves the tab |
-| Copy | pasted subject/body, or a campaign id via API key; optional lead CSV | browser |
+| List health | lead CSV; optional sending domains + MXToolbox key for a blacklist check | MX in the browser (DNS-over-HTTPS), lead data never leaves the tab. Blacklist via `api/mxtoolbox.js` |
+| Spam & copy check | pasted subject/body, or a campaign id via API key; optional lead CSV | browser |
 | Inbox health | API key | browser + proxy. Every run is saved in the browser, **trends** compare this week with last |
 | Campaign infra | API key + campaign; optional lead CSV | browser + proxy |
 
-Instantly sends no CORS headers, so sequencer calls go through `api/instantly.js`, a stateless
-Vercel function. It is read-only (allowlisted GET/`leads/list` paths), takes the key per request in a header,
+Instantly and MXToolbox send no CORS headers, so their calls go through `api/instantly.js` and `api/mxtoolbox.js`, stateless
+Vercel functions. It is read-only (allowlisted GET/`leads/list` paths), takes the key per request in a header,
 and stores and logs nothing. The key stays in the tab's `sessionStorage`.
 
 The JS in `js/checks.js` is a port of the Python checks; the spam word lists are generated from
@@ -129,12 +129,12 @@ Thresholds live in both places, so change both. `node test_checks.js` uses the s
 History CSV (`date,email,domain,esp,sent,bounced,replies`) is shared: the CLI writes it to `history/`, the UI
 downloads and imports it, `python3 trends.py` and `/health-check trends` read it.
 
-Run it locally with the proxy: `vercel dev` (a plain `python3 -m http.server` serves the MX tab only).
+Run it locally with the proxy: `vercel dev` (a plain `python3 -m http.server` serves the List health tab only).
 
-### MX tab details
+### List health tab details
 
 
-The first tab runs the `deliverability.py` lead check in the browser. Drop in a CSV, watch
+The List health tab runs the `deliverability.py` lead check in the browser. Drop in a CSV, watch
 the domains resolve live, and download the clean list. MX lookups run client-side over
 DNS-over-HTTPS, so lead data never leaves the tab. It's a static page, so it deploys to
 Vercel as-is. To run it locally:

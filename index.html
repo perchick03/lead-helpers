@@ -267,8 +267,8 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); co
   </header>
 
   <nav class="tabs" role="tablist" aria-label="Checks">
-    <button class="tab-btn" role="tab" data-tab="mx" aria-selected="true">Lead list · MX</button>
-    <button class="tab-btn" role="tab" data-tab="copy" aria-selected="false">Copy</button>
+    <button class="tab-btn" role="tab" data-tab="mx" aria-selected="true">List health</button>
+    <button class="tab-btn" role="tab" data-tab="copy" aria-selected="false">Spam &amp; copy check</button>
     <button class="tab-btn" role="tab" data-tab="inbox" aria-selected="false">Inbox health</button>
     <button class="tab-btn" role="tab" data-tab="infra" aria-selected="false">Campaign infra</button>
   </nav>
@@ -380,6 +380,22 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); co
     </div>
   </section>
 
+  <!-- blacklist -->
+  <section class="card" id="blCard">
+    <div class="card-h"><span class="idx">05</span> sending-domain blacklist</div>
+    <p class="note" style="border:0;margin:0 0 12px;padding:0">Spamhaus DBL and friends via MXToolbox. This checks your <b>sending</b> domains, not the leads. Bring your own MXToolbox key (free plan: 64 lookups/day). It is sent per request through a stateless proxy and never stored.</p>
+    <div class="frow">
+      <label class="fld"><span>MXToolbox API key</span><input type="password" id="mxtKey" autocomplete="off" placeholder="mxtoolbox.com → API"></label>
+    </div>
+    <div class="frow"><label class="fld"><span>Sending domains (one per line or comma-separated)</span><textarea id="blDomains" style="min-height:90px" placeholder="acme-outreach.com&#10;getacme.co"></textarea></label></div>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" id="blRun">Check blacklists</button>
+      <button class="btn btn-ghost btn-sm" id="blFleet">Use my connected fleet</button>
+      <span class="stat" id="blStat"></span>
+    </div>
+    <div class="err hidden" id="blErr"></div>
+    <div id="blOut"></div>
+  </section>
   </div>
 
   <!-- copy -->
@@ -926,6 +942,36 @@ $("#infraRun").addEventListener("click", e => busy(e.target, "#infraErr", async 
     <p class="note" style="border:0;padding:0">${fleet.length ? `Fleet: ${fleet.length} inboxes across ${doms.size} domains.` : "No senders attached to this campaign."}</p>
     <div>${findingsHtml(findings)}</div>${downloadBtn("infraDl", "Download findings CSV")}`;
   $("#infraDl").addEventListener("click", () => download(`campaign-infra_${stamp()}.csv`, findingsCsv(findings, {campaign:camp.name, verdict:v})));
+}));
+
+/* ── blacklist (List health tab) ─────────────────────────────────────────── */
+$("#blFleet").addEventListener("click", async e => busy(e.target, "#blErr", async () => {
+  needApi();
+  const doms = [...new Set((await API.accounts()).map(a => Checks.dom(a.email)))].sort();
+  $("#blDomains").value = doms.join("\n"); $("#blStat").textContent = `${doms.length} sending domains`;
+}));
+$("#blRun").addEventListener("click", e => busy(e.target, "#blErr", async () => {
+  const key = $("#mxtKey").value.trim();
+  if(!key) throw new Error("Paste your MXToolbox API key.");
+  const doms = [...new Set($("#blDomains").value.toLowerCase().split(/[\s,;]+/).filter(Boolean))];
+  if(!doms.length) throw new Error("Add at least one sending domain.");
+  const rows = [];
+  for(const d of doms){
+    let r;
+    try{
+      const res = await fetch("/api/mxtoolbox", {method:"POST", headers:{"content-type":"application/json","x-api-key":key}, body:JSON.stringify({domain:d})});
+      if(!res.ok) throw new Error(`HTTP ${res.status}${res.status === 401 || res.status === 403 ? " — check the key" : ""}`);
+      r = Checks.blacklistVerdict(await res.json());
+    }catch(err){ r = {verdict:"not checked", detail:err.message}; }   // a failed lookup is never "clean"
+    rows.push({domain:d, ...r});
+    $("#blStat").textContent = `${rows.length}/${doms.length}`;
+    if(/HTTP 40[13]/.test(r.detail)) break;                           // bad key: don't burn the rest
+  }
+  const cls = v => v === "BLACKLISTED" ? "b-dead" : v === "clean" ? "b-google" : "b-gateway";
+  $("#blOut").innerHTML = `<div class="tbl-wrap" style="margin-top:14px"><table><thead><tr><th>domain</th><th>verdict</th><th>lists</th></tr></thead><tbody>
+    ${rows.map(r => `<tr><td class="email">${esc(r.domain)}</td><td><span class="badge ${cls(r.verdict)}">${esc(r.verdict)}</span></td><td>${esc(r.detail)}</td></tr>`).join("")}</tbody></table></div>
+    ${downloadBtn("blDl", "Download blacklist CSV")}`;
+  $("#blDl").addEventListener("click", () => download(`blacklist_${stamp()}.csv`, Checks.toCsv(rows.map(r => ({run_at:new Date().toISOString(), ...r})), ["run_at","domain","verdict","detail"])));
 }));
 
 showTab((location.hash || "").slice(1));

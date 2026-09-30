@@ -313,6 +313,16 @@
   }
   const infraVerdict = (f) => (f.some((x) => x.sev === "red") ? "DO NOT SEND" : f.filter((x) => x.sev === "orange").length > 1 ? "FIX FIRST" : "INFRA OK");
 
+  // ── blacklist (inbox_health.py blacklist_check + verdict). body = MXToolbox lookup JSON ──
+  const FATAL = new Set(["Spamhaus DBL"]), IGNORED = new Set(["SURBL multi"]);
+  function blacklistVerdict(body) {
+    if ((body.Timeouts || []).some((t) => FATAL.has(t.Name))) return { verdict: "not checked", detail: "Spamhaus DBL lookup timed out" }; // never reads as clean
+    const hits = (body.Failed || []).map((f) => f.Name);
+    if (hits.some((h) => FATAL.has(h))) return { verdict: "BLACKLISTED", detail: hits.join(", ") };
+    const minor = hits.filter((h) => !IGNORED.has(h));
+    return minor.length ? { verdict: "minor", detail: minor.join(", ") } : { verdict: "clean", detail: "" };
+  }
+
   // ── csv ──
   const csvCell = (v) => (/[",\n\r]/.test(String(v ?? "")) ? `"${String(v).replace(/"/g, '""')}"` : String(v ?? ""));
   const toCsv = (rows, cols) => [cols.join(","), ...rows.map((r) => cols.map((c) => csvCell(r[c])).join(","))].join("\r\n");
@@ -320,6 +330,6 @@
   // merge history rows; the later row wins on (date, email), like trends.py load()
   const mergeHistory = (...sets) => { const m = new Map(); for (const s of sets) for (const r of s) m.set(r.date + "|" + r.email, r); return [...m.values()].sort((a, b) => (a.date + a.email < b.date + b.email ? -1 : 1)); };
 
-  root.Checks = { instantly, makeSpam, tagsUsed, resolves, render, stripHtml, snake, copyCheck, rollup, lastSendDay, classifyDomain, allocation, trends, infraLint, infraVerdict, projectedBounce, toCsv, mergeHistory, HIST_COLS, dom };
+  root.Checks = { instantly, makeSpam, tagsUsed, resolves, render, stripHtml, snake, copyCheck, rollup, lastSendDay, classifyDomain, allocation, trends, infraLint, infraVerdict, projectedBounce, blacklistVerdict, toCsv, mergeHistory, HIST_COLS, dom };
   if (typeof module !== "undefined") module.exports = root.Checks;
 })(typeof window !== "undefined" ? window : globalThis);
